@@ -416,11 +416,11 @@ func searchChairs(c echo.Context) error {
 		}
 
 		if chairPrice.Min != -1 {
-			conditions = append(conditions, "price >= ?")
+			conditions = append(conditions, "price >= %v")
 			params = append(params, chairPrice.Min)
 		}
 		if chairPrice.Max != -1 {
-			conditions = append(conditions, "price < ?")
+			conditions = append(conditions, "price < %v")
 			params = append(params, chairPrice.Max)
 		}
 	}
@@ -433,11 +433,11 @@ func searchChairs(c echo.Context) error {
 		}
 
 		if chairHeight.Min != -1 {
-			conditions = append(conditions, "height >= ?")
+			conditions = append(conditions, "height >= %v")
 			params = append(params, chairHeight.Min)
 		}
 		if chairHeight.Max != -1 {
-			conditions = append(conditions, "height < ?")
+			conditions = append(conditions, "height < %v")
 			params = append(params, chairHeight.Max)
 		}
 	}
@@ -450,11 +450,11 @@ func searchChairs(c echo.Context) error {
 		}
 
 		if chairWidth.Min != -1 {
-			conditions = append(conditions, "width >= ?")
+			conditions = append(conditions, "width >= %v")
 			params = append(params, chairWidth.Min)
 		}
 		if chairWidth.Max != -1 {
-			conditions = append(conditions, "width < ?")
+			conditions = append(conditions, "width < %v")
 			params = append(params, chairWidth.Max)
 		}
 	}
@@ -467,33 +467,34 @@ func searchChairs(c echo.Context) error {
 		}
 
 		if chairDepth.Min != -1 {
-			conditions = append(conditions, "depth >= ?")
+			conditions = append(conditions, "depth >= %v")
 			params = append(params, chairDepth.Min)
 		}
 		if chairDepth.Max != -1 {
-			conditions = append(conditions, "depth < ?")
+			conditions = append(conditions, "depth < %v")
 			params = append(params, chairDepth.Max)
 		}
 	}
 
 	if c.QueryParam("kind") != "" {
-		conditions = append(conditions, "kind = ?")
+		conditions = append(conditions, "kind = %v")
 		params = append(params, c.QueryParam("kind"))
 	}
 
 	if c.QueryParam("color") != "" {
-		conditions = append(conditions, "color = ?")
+		conditions = append(conditions, "color = %v")
 		params = append(params, c.QueryParam("color"))
 	}
 
+	featureCondition := ""
 	if c.QueryParam("features") != "" {
 		for _, f := range strings.Split(c.QueryParam("features"), ",") {
-			conditions = append(conditions, "features LIKE CONCAT('%', ?, '%')")
-			params = append(params, f)
+			featureCondition += " AND features LIKE '%" + f + "%'"
+			println(featureCondition)
 		}
 	}
 
-	if len(conditions) == 0 {
+	if len(conditions) == 0 && featureCondition == "" {
 		c.Echo().Logger.Infof("Search condition not found")
 		return c.NoContent(http.StatusBadRequest)
 	}
@@ -515,18 +516,25 @@ func searchChairs(c echo.Context) error {
 	searchQuery := "SELECT * FROM chair WHERE "
 	countQuery := "SELECT COUNT(*) FROM chair WHERE "
 	searchCondition := strings.Join(conditions, " AND ")
-	limitOffset := " ORDER BY popularity DESC, id ASC LIMIT ? OFFSET ?"
+
+	cQuery := fmt.Sprintf(countQuery+searchCondition, params...)
+	cQuery += featureCondition
+	println(cQuery)
 
 	var res ChairSearchResponse
-	err = db.Get(&res.Count, countQuery+searchCondition, params...)
+	err = db.Get(&res.Count, cQuery)
 	if err != nil {
 		c.Logger().Errorf("searchChairs DB execution error : %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	limitOffset := fmt.Sprintf(" ORDER BY popularity DESC, id ASC LIMIT %v OFFSET %v", perPage, page*perPage)
 	chairs := []Chair{}
-	params = append(params, perPage, page*perPage)
-	err = db.Select(&chairs, searchQuery+searchCondition+limitOffset, params...)
+	sQuery := fmt.Sprintf(searchQuery+searchCondition, params...)
+	sQuery += featureCondition + limitOffset
+	println(sQuery)
+
+	err = db.Select(&chairs, sQuery)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.JSON(http.StatusOK, ChairSearchResponse{Count: 0, Chairs: []Chair{}})
