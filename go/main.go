@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -401,8 +402,14 @@ func postChair(c echo.Context) error {
 		c.Logger().Errorf("failed to commit tx: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	chairMap.Range(func(key interface{}, value interface{}) bool {
+		chairMap.Delete(key)
+		return true
+	})
 	return c.NoContent(http.StatusCreated)
 }
+
+var chairMap = sync.Map{}
 
 func searchChairs(c echo.Context) error {
 	conditions := make([]string, 0)
@@ -490,7 +497,6 @@ func searchChairs(c echo.Context) error {
 	if c.QueryParam("features") != "" {
 		for _, f := range strings.Split(c.QueryParam("features"), ",") {
 			featureCondition += " AND features LIKE '%" + f + "%'"
-			println(featureCondition)
 		}
 	}
 
@@ -519,22 +525,21 @@ func searchChairs(c echo.Context) error {
 
 	cQuery := fmt.Sprintf(countQuery+searchCondition, params...)
 	cQuery += featureCondition
-	println(cQuery)
 
 	var res ChairSearchResponse
-	err = db.Get(&res.Count, cQuery)
+	count, err := countChairs(cQuery)
 	if err != nil {
 		c.Logger().Errorf("searchChairs DB execution error : %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	res.Count = count
 
 	limitOffset := fmt.Sprintf(" ORDER BY popularity DESC, id ASC LIMIT %v OFFSET %v", perPage, page*perPage)
 	chairs := []Chair{}
 	sQuery := fmt.Sprintf(searchQuery+searchCondition, params...)
 	sQuery += featureCondition + limitOffset
-	println(sQuery)
 
-	err = db.Select(&chairs, sQuery)
+	chairs, err = getChairs(sQuery)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.JSON(http.StatusOK, ChairSearchResponse{Count: 0, Chairs: []Chair{}})
@@ -546,6 +551,30 @@ func searchChairs(c echo.Context) error {
 	res.Chairs = chairs
 
 	return c.JSON(http.StatusOK, res)
+}
+
+func countChairs(cQuery string) (int64, error) {
+	v, ok := chairMap.Load(cQuery)
+	if ok {
+		return v.(int64), nil
+	}
+
+	var count int64
+	err := db.Get(&count, cQuery)
+	chairMap.Store(cQuery, count)
+	return count, err
+}
+
+func getChairs(sQuery string) ([]Chair, error) {
+	v, ok := chairMap.Load(sQuery)
+	if ok {
+		return v.([]Chair), nil
+	}
+
+	chairs := []Chair{}
+	err := db.Select(&chairs, sQuery)
+	chairMap.Store(sQuery, chairs)
+	return chairs, err
 }
 
 func buyChair(c echo.Context) error {
@@ -596,6 +625,10 @@ func buyChair(c echo.Context) error {
 		c.Echo().Logger.Errorf("transaction commit error : %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	chairMap.Range(func(key interface{}, value interface{}) bool {
+		chairMap.Delete(key)
+		return true
+	})
 
 	return c.NoContent(http.StatusOK)
 }
