@@ -477,12 +477,12 @@ func searchChairs(c echo.Context) error {
 	}
 
 	if c.QueryParam("kind") != "" {
-		conditions = append(conditions, "kind = %v")
+		conditions = append(conditions, "kind = '%v'")
 		params = append(params, c.QueryParam("kind"))
 	}
 
 	if c.QueryParam("color") != "" {
-		conditions = append(conditions, "color = %v")
+		conditions = append(conditions, "color = '%v'")
 		params = append(params, c.QueryParam("color"))
 	}
 
