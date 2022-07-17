@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -239,6 +241,14 @@ func init() {
 }
 
 func main() {
+
+	// pprof
+	runtime.SetBlockProfileRate(1)
+	runtime.SetMutexProfileFraction(1)
+	go func() {
+		log.Fatal(http.ListenAndServe("0.0.0.0:6060", nil))
+	}()
+
 	// Echo instance
 	e := echo.New()
 	e.Debug = true
