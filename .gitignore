@@ -10,3 +10,5 @@ ruby/*
 rust/*
 nginx/*
 Makefile
+.idea
+*.DS_Store

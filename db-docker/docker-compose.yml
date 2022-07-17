@@ -1,0 +1,17 @@
+version: "3"
+
+services:
+  mysql:
+    platform: linux/x86_64 # M1チップ用の設定
+    image: mysql:5.7
+    container_name: mysql_isucon10q
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: isuumo
+      MYSQL_USER: isucon
+      MYSQL_PASSWORD: isucon
+    volumes:
+      - ../mysql/local:/docker-entrypoint-initdb.d
+      - ../mysql/local-conf/my.cnf:/etc/mysql/conf.d/my.cnf
+    ports:
+      - "3306:3306"
