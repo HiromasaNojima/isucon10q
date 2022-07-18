@@ -18,7 +18,8 @@ CREATE TABLE isuumo.estate
     door_width  INTEGER             NOT NULL,
     features    VARCHAR(255)         NOT NULL,
     popularity  INTEGER             NOT NULL,
-    g GEOMETRY AS (ST_GeomFromText(CONCAT('POINT(',estate.latitude,' ',estate.longitude,')'))) STORED NOT NULL, SPATIAL INDEX(g)
+    g GEOMETRY AS (ST_GeomFromText(CONCAT('POINT(',estate.latitude,' ',estate.longitude,')'))) STORED NOT NULL, SPATIAL INDEX(g),
+    INDEX rent(rent)
 );
 
 CREATE TABLE isuumo.chair
