@@ -775,6 +775,20 @@ func postEstate(c echo.Context) error {
 	return c.NoContent(http.StatusCreated)
 }
 
+var estateQueryCache sync.Map
+
+func cacheEstateCountQuery(query string) (int64, error) {
+	v, ok := estateQueryCache.Load(query)
+	if ok {
+		return v.(int64), nil
+	}
+
+	var count int64
+	err := db.Get(&count, query)
+	estateQueryCache.Store(query, count)
+	return count, err
+}
+
 func searchEstates(c echo.Context) error {
 	conditions := make([]string, 0)
 	params := make([]interface{}, 0)
@@ -787,11 +801,11 @@ func searchEstates(c echo.Context) error {
 		}
 
 		if doorHeight.Min != -1 {
-			conditions = append(conditions, "door_height >= ?")
+			conditions = append(conditions, "door_height >= %v")
 			params = append(params, doorHeight.Min)
 		}
 		if doorHeight.Max != -1 {
-			conditions = append(conditions, "door_height < ?")
+			conditions = append(conditions, "door_height < %v")
 			params = append(params, doorHeight.Max)
 		}
 	}
@@ -804,11 +818,11 @@ func searchEstates(c echo.Context) error {
 		}
 
 		if doorWidth.Min != -1 {
-			conditions = append(conditions, "door_width >= ?")
+			conditions = append(conditions, "door_width >= %v")
 			params = append(params, doorWidth.Min)
 		}
 		if doorWidth.Max != -1 {
-			conditions = append(conditions, "door_width < ?")
+			conditions = append(conditions, "door_width < %v")
 			params = append(params, doorWidth.Max)
 		}
 	}
@@ -821,23 +835,23 @@ func searchEstates(c echo.Context) error {
 		}
 
 		if estateRent.Min != -1 {
-			conditions = append(conditions, "rent >= ?")
+			conditions = append(conditions, "rent >= %v")
 			params = append(params, estateRent.Min)
 		}
 		if estateRent.Max != -1 {
-			conditions = append(conditions, "rent < ?")
+			conditions = append(conditions, "rent < %v")
 			params = append(params, estateRent.Max)
 		}
 	}
 
+	var featureConditions []string
 	if c.QueryParam("features") != "" {
 		for _, f := range strings.Split(c.QueryParam("features"), ",") {
-			conditions = append(conditions, "features like concat('%', ?, '%')")
-			params = append(params, f)
+			featureConditions = append(featureConditions, "features LIKE '%"+f+"%'")
 		}
 	}
 
-	if len(conditions) == 0 {
+	if len(conditions) == 0 && len(featureConditions) == 0 {
 		c.Echo().Logger.Infof("searchEstates search condition not found")
 		return c.NoContent(http.StatusBadRequest)
 	}
@@ -857,18 +871,32 @@ func searchEstates(c echo.Context) error {
 	searchQuery := "SELECT * FROM estate WHERE "
 	countQuery := "SELECT COUNT(*) FROM estate WHERE "
 	searchCondition := strings.Join(conditions, " AND ")
-	limitOffset := " ORDER BY popularity DESC, id ASC LIMIT ? OFFSET ?"
+	cQuery := fmt.Sprintf(countQuery+searchCondition, params...)
+	if len(conditions) == 0 {
+		cQuery += strings.Join(featureConditions, " AND ")
+	} else {
+		cQuery += " AND "
+		cQuery += strings.Join(featureConditions, " AND ")
+	}
 
 	var res EstateSearchResponse
-	err = db.Get(&res.Count, countQuery+searchCondition, params...)
+	err = db.Get(&res.Count, cQuery)
 	if err != nil {
 		c.Logger().Errorf("searchEstates DB execution error : %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	limitOffset := fmt.Sprintf(" ORDER BY popularity DESC, id ASC LIMIT %v OFFSET %v", perPage, page*perPage)
 	estates := []Estate{}
-	params = append(params, perPage, page*perPage)
-	err = db.Select(&estates, searchQuery+searchCondition+limitOffset, params...)
+	sQuery := fmt.Sprintf(searchQuery+searchCondition, params...)
+	if len(conditions) == 0 {
+		sQuery += strings.Join(featureConditions, " AND ")
+	} else {
+		sQuery += " AND "
+		sQuery += strings.Join(featureConditions, " AND ")
+	}
+	sQuery += limitOffset
+	err = db.Select(&estates, sQuery)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.JSON(http.StatusOK, EstateSearchResponse{Count: 0, Estates: []Estate{}})
