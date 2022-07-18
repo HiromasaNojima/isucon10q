@@ -777,7 +777,7 @@ func postEstate(c echo.Context) error {
 
 var estateQueryCache sync.Map
 
-func cacheEstateCountQuery(query string) (int64, error) {
+func getEstateCount(query string) (int64, error) {
 	v, ok := estateQueryCache.Load(query)
 	if ok {
 		return v.(int64), nil
@@ -787,6 +787,18 @@ func cacheEstateCountQuery(query string) (int64, error) {
 	err := db.Get(&count, query)
 	estateQueryCache.Store(query, count)
 	return count, err
+}
+
+func getEstates(sQuery string) ([]Estate, error) {
+	v, ok := estateQueryCache.Load(sQuery)
+	if ok {
+		return v.([]Estate), nil
+	}
+
+	estates := []Estate{}
+	err := db.Select(&estates, sQuery)
+	chairMap.Store(sQuery, estates)
+	return estates, err
 }
 
 func searchEstates(c echo.Context) error {
@@ -882,11 +894,12 @@ func searchEstates(c echo.Context) error {
 	}
 
 	var res EstateSearchResponse
-	err = db.Get(&res.Count, cQuery)
+	count, err := getEstateCount(cQuery)
 	if err != nil {
 		c.Logger().Errorf("searchEstates DB execution error : %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	res.Count = count
 
 	limitOffset := fmt.Sprintf(" ORDER BY popularity DESC, id ASC LIMIT %v OFFSET %v", perPage, page*perPage)
 	estates := []Estate{}
@@ -900,7 +913,7 @@ func searchEstates(c echo.Context) error {
 		}
 	}
 	sQuery += limitOffset
-	err = db.Select(&estates, sQuery)
+	estates, err = getEstates(sQuery)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.JSON(http.StatusOK, EstateSearchResponse{Count: 0, Estates: []Estate{}})
