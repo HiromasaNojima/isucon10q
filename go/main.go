@@ -875,8 +875,10 @@ func searchEstates(c echo.Context) error {
 	if len(conditions) == 0 {
 		cQuery += strings.Join(featureConditions, " AND ")
 	} else {
-		cQuery += " AND "
-		cQuery += strings.Join(featureConditions, " AND ")
+		if len(featureConditions) != 0 {
+			cQuery += " AND "
+			cQuery += strings.Join(featureConditions, " AND ")
+		}
 	}
 
 	var res EstateSearchResponse
@@ -892,8 +894,10 @@ func searchEstates(c echo.Context) error {
 	if len(conditions) == 0 {
 		sQuery += strings.Join(featureConditions, " AND ")
 	} else {
-		sQuery += " AND "
-		sQuery += strings.Join(featureConditions, " AND ")
+		if len(featureConditions) != 0 {
+			sQuery += " AND "
+			sQuery += strings.Join(featureConditions, " AND ")
+		}
 	}
 	sQuery += limitOffset
 	err = db.Select(&estates, sQuery)
