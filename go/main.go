@@ -662,7 +662,7 @@ func getEstateDetail(c echo.Context) error {
 	}
 
 	var estate Estate
-	err = db.Get(&estate, "SELECT * FROM estate WHERE id = ?", id)
+	estate, err = getEstate(id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			c.Echo().Logger.Infof("getEstateDetail estate id %v not found", id)
@@ -951,9 +951,7 @@ func postEstateRequestDocument(c echo.Context) error {
 		return c.NoContent(http.StatusBadRequest)
 	}
 
-	estate := Estate{}
-	query := `SELECT * FROM estate WHERE id = ?`
-	err = db.Get(&estate, query, id)
+	_, err = getEstate(id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.NoContent(http.StatusNotFound)
@@ -963,6 +961,25 @@ func postEstateRequestDocument(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusOK)
+}
+
+var estateCache = sync.Map{}
+
+func getEstate(id int) (Estate, error) {
+	v, ok := estateCache.Load(id)
+	if ok {
+		return v.(Estate), nil
+	}
+
+	var estate Estate
+	query := `SELECT * FROM estate WHERE id = ?`
+	println(query)
+	err := db.Get(&estate, query, id)
+	if err != nil {
+		return estate, err
+	}
+	estateCache.Store(id, estate)
+	return estate, err
 }
 
 func getEstateSearchCondition(c echo.Context) error {
